@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<?xml-stylesheet type="text/xsl" href="modx.prosilver.en.xsl"?>
+<!--For security purposes, please check: http://www.phpbb.com/mods/ for the latest version of this MOD. Although MODs are checked before being allowed in the MODs Database there is no guarantee that there are no security problems within the MOD. No support will be given for MODs not found within the MODs Database which can be found at http://www.phpbb.com/mods/-->
+<mod xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://www.phpbb.com/mods/xml/modx-1.2.3.xsd">
+  <header>
+    <license>http://opensource.org/licenses/gpl-license.php GNU General Public License v2</license>
+    <title lang="en-gb">Email on Birthday</title>
+    <description lang="en-gb">If Birthdays are enabled this will send an email to the members on their birthday, can be turned off via ACP
+</description>
+    <author-notes lang="en-gb">I had this feature on phpbb2 (thanks to Terrafrost) and wanted something like this on phpbb3 as well.
+Maybe someone else likes it so I publish it :)
+
+</author-notes>
+ <author-group>
+      <author>
+        <realname>Heiko Carstens</realname>
+        <email>lefty@lefty74.com</email>
+        <username>lefty74</username>
+        <homepage>http://www.lefty74.com</homepage>
+        <contributions />
+      </author>
+    </author-group>
+    <mod-version>1.0.1b</mod-version>
+    <installation>
+      <level>easy</level>
+      <time>489</time>
+		<target-version>3.0.6</target-version>
+    </installation>
+    <history>
+      <entry>
+        <date>2007-09-23</date>
+ 		<rev-version>0.0.1</rev-version>
+        <changelog lang="en">
+			<change>Initial release</change>
+		</changelog>
+      </entry>
+      <entry>
+        <date>2008-03-01</date>
+  		<rev-version>1.0.0</rev-version>
+        <changelog lang="en">
+          <change>repackaged for submission to MODDB</change>
+        </changelog>
+      </entry>
+    <entry>
+        <date>2009-12-02</date>
+  		<rev-version>1.0.1</rev-version>
+        <changelog lang="en">
+          <change>updated to work with 3.0.6</change>
+          <change>added logging in ACP for emails sent</change>
+        </changelog>
+      </entry>
+    <entry>
+        <date>2009-12-03</date>
+  		<rev-version>1.0.1a</rev-version>
+        <changelog lang="en">
+          <change>forgot to look at this http://www.phpbb.com/community/viewtopic.php?p=5555715#p5555715</change>
+        </changelog>
+      </entry>
+    <entry>
+        <date>2009-12-27</date>
+  		<rev-version>1.0.1b</rev-version>
+        <changelog lang="en">
+          <change>forgot to look at this http://www.phpbb.com/community/viewtopic.php?p=5555715#p5555715 properly *sigh*</change>
+        </changelog>
+      </entry>
+  </history> 
+ </header>
+  <action-group>
+ 		<copy>
+<file from="root/language/en/email/birthday_email.txt" to="language/en/email/birthday_email.txt" />
+		</copy>
+    <sql>INSERT INTO phpbb_config (config_name, config_value) VALUES ('birthday_emails', '0');
+INSERT INTO phpbb_config (config_name, config_value) VALUES ('birthday_run', '');
+</sql>
+    <open src="index.php">
+      <edit>
+        <find>$birthday_list = '';
+</find>
+        <action type="after-add">$bd_list_ary = $bd_list_log_ary = array();
+</action>
+      </edit>
+      <edit>
+        <find>	$sql = 'SELECT u.user_id, u.username, u.user_colour, u.user_birthday</find>
+        <inline-edit>
+          <inline-find>u.user_birthday</inline-find>
+          <inline-action type="after-add">, u.user_email, u.user_lang,u.user_notify_type, u.user_jabber </inline-action>
+        </inline-edit>
+      </edit>
+      <edit>
+        <find><![CDATA[	}
+	$db->sql_freeresult($result);]]></find>
+        <action type="replace-with"><![CDATA[		if (trim($row['user_email']) && $config['birthday_emails'])
+		{
+			$bd_list_ary[] = array(
+				'method'	=> $row['user_notify_type'],
+				'email'		=> $row['user_email'],
+				'jabber'	=> $row['user_jabber'],
+				'name'		=> $row['username'],
+				'lang'		=> $row['user_lang']
+			);
+		}
+	}
+	$db->sql_freeresult($result);
+
+	$check_time_bdemail = (int) gmdate('mdY',time() + (3600 * ($config['board_timezone'] + $config['board_dst'])));
+
+	if ( sizeof($bd_list_ary) && ($user->data['user_timezone'] == $config['board_timezone'] && $user->data['user_dst'] == $config['board_dst']) && ($config['birthday_run'] != $check_time_bdemail) && $config['birthday_emails'] )
+	{
+		set_config('birthday_run', $check_time_bdemail);
+		
+		include_once($phpbb_root_path . 'includes/functions_messenger.' . $phpEx);
+		$messenger = new messenger();
+
+		foreach ($bd_list_ary as $pos => $addr)
+		{
+			$messenger->template('birthday_email', $addr['lang']);
+			
+			$messenger->to($addr['email'], $addr['name']);
+			$messenger->im($addr['jabber'], $addr['name']);
+			// if you want to receive copies of the birthday emails, just uncomment below line 
+			//$messenger->cc('your@email.com', 'your_name');
+			
+			$messenger->assign_vars(array(
+				'USERNAME'		=> htmlspecialchars_decode($addr['name'])
+			));
+			$messenger->send($addr['method']);
+			
+			$bd_list_log_ary[] = $addr['name']; 
+		}
+		add_log('admin', 'LOG_BIRTHDAY_EMAIL_SENT', implode(', ', $bd_list_log_ary));				
+		unset($bd_list_ary);
+		unset($bd_list_log_ary);
+		
+		$messenger->save_queue();
+		unset($messenger);
+	}
+]]></action>
+        <comment lang="en-gb">around line 104</comment>
+      </edit>
+    </open>
+    <open src="includes/acp/acp_board.php">
+      <edit>
+        <find><![CDATA[						'allow_birthdays'		=> array('lang' => 'ALLOW_BIRTHDAYS',		'validate' => 'bool',	'type' => 'radio:yes_no', 'explain' => true),
+]]></find>
+        <action type="after-add"><![CDATA[						'birthday_emails'		=> array('lang' => 'BIRTHDAY_EMAILS',		'validate' => 'bool',	'type' => 'radio:yes_no', 'explain' => true),
+]]></action>
+      </edit>
+    </open>
+    <open src="language/en/acp/board.php">
+      <edit>
+        <find><![CDATA[	'ALLOW_TOPIC_NOTIFY'		=> 'Allow subscribing to topics',
+]]></find>
+        <action type="after-add"><![CDATA[	'BIRTHDAY_EMAILS'			=> 'Send Birthday email',
+	'BIRTHDAY_EMAILS_EXPLAIN'	=> 'Sends a birthday email on the users birthday',
+]]></action>
+      </edit>
+    </open>
+    <open src="language/en/acp/common.php">
+      <edit>
+        <find><![CDATA[?>]]></find>
+        <action type="before-add"><![CDATA[// Log Entry email on birthday mod from lefty74
+$lang = array_merge($lang, array(
+	'LOG_BIRTHDAY_EMAIL_SENT'		=> '<strong>Birthday email sent to</strong><br />» %s',
+));
+]]></action>
+      </edit>
+    </open>
+    <diy-instructions lang="en"> Do not forget to purge the cache and refresh templates 
+	</diy-instructions>
+  </action-group>
+</mod>
